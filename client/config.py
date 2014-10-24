@@ -1,0 +1,2 @@
+inputMsg = None
+newMSG = False
