@@ -9,12 +9,15 @@ import solver
 import config
 import sys
 
+
+startTurnTime = 0
+
 f = open('dump.txt','w')
 
 lock = threading.Lock()
 
 r_render = None
-def AccessVar(isRead, msg):
+def AccessVarMSG(isRead, msg):
     res = None
     lock.acquire()
     if isRead:
@@ -26,17 +29,36 @@ def AccessVar(isRead, msg):
     lock.release()
     return res
 
+def AccessVarResult(isRead, msg):
+    res = None
+    lock.acquire()
+    if isRead:
+        config.newRes = False
+        res = config.solvedRes
+    else:
+        config.solvedRes = msg
+        config.newRes = True
+    lock.release()
+    return res
+
 def on_message(ws, message):
+    global startTurnTime
     m_utf8 = message.decode('utf-8')
+    print "->"
+    if startTurnTime != 0:
+        print "WARNING: time exceeded"
+    startTurnTime = int(round(time.time()*1000))
     if True:
         pattern = u'^board=(.*)$'
         prog = re.compile(pattern)
         res = prog.match(m_utf8)
         parsed = res.groups()[0]
-        print len(parsed)
+        #print len(parsed)
         sqrt_len = int(math.sqrt(len(parsed)))
-        print sqrt_len
-        AccessVar(False, parsed)
+        #print sqrt_len
+        AccessVarMSG(False, parsed)
+        #print config.newMSG
+        #AccessVar(False, parsed)
         #print u"Recived message:\n\n" + res.groups()[0]
         #for i in range(len(parsed)):
         #    f.write(parsed[i])
@@ -56,13 +78,26 @@ def on_close(ws):
 
 def on_open(ws):
     def run(*args):
+        global startTurnTime
+        while True:
+            time.sleep(0.01)
+            if config.newRes:
+                print "<-"
+                res = AccessVarResult(True, None)
+                ws.send(res)
+                currTime = int(round(time.time()*1000))
+                print "time= " + str(currTime-startTurnTime)
+                startTurnTime = 0
+
+        #not used
         for i in range(20):
-            time.sleep(3)
+            time.sleep(0.5)
             ws.send("RIGHT")  # %d" % i)
         time.sleep(1)
         ws.close()
         f.close()
         print "thread terminating..."
+
     thread.start_new_thread(run, ())
 
 
@@ -74,15 +109,9 @@ def startRenderThread():
 if __name__ == "__main__":
     thread.start_new_thread(startRenderThread, ())
     websocket.enableTrace(True)
-#    ws = websocket.WebSocketApp("ws://echo.websocket.org/",
-#                              on_message = on_message,
- #                             on_error = on_error,
-  #                            on_close = on_close)
-
     ws = websocket.WebSocketApp("ws://tetrisj.jvmhost.net:12270/codenjoy-contest/ws?user=m16a",
                                 on_message=on_message,
                                 on_error=on_error,
                                 on_close=on_close)
-
     ws.on_open = on_open
     ws.run_forever()

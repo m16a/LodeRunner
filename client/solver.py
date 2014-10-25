@@ -6,13 +6,15 @@ import math
 import config
 import ws_client
 
+g_useRender = True
 
 BLUE = (0, 0, 255)
 ORANGE = (255, 165, 0)
 CORAL = (255, 157, 0)
 GREY = (204, 204, 204)
 YELLOW = (255, 255, 0)
-
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
 
 class BlockType:
     EMPTY = 0
@@ -20,6 +22,8 @@ class BlockType:
     BREAKABLE = 2
     LEDDER = 3
     GOLD = 4
+    ME = 5
+    AI = 6
 
 legend = {
     u' ': (BlockType.EMPTY, None),
@@ -27,6 +31,24 @@ legend = {
     u'#': (BlockType.BREAKABLE, ORANGE),
     u'H': (BlockType.LEDDER, GREY),
     u'$': (BlockType.GOLD, YELLOW),
+    
+    u'Ѡ': (BlockType.ME, RED),
+    u'Я': (BlockType.ME, RED),
+    u'R': (BlockType.ME, RED),
+    u'Y': (BlockType.ME, RED),
+    u'◄': (BlockType.ME, RED),
+    u'►': (BlockType.ME, RED),
+    u']': (BlockType.ME, RED),
+    u'[': (BlockType.ME, RED),
+    u'}': (BlockType.ME, RED),
+    u'{': (BlockType.ME, RED),
+
+    u'Q': (BlockType.AI, GREEN),
+    u'«': (BlockType.AI, GREEN),
+    u'»': (BlockType.AI, GREEN),
+    u'<': (BlockType.AI, GREEN),
+    u'<': (BlockType.AI, GREEN),
+    u'X': (BlockType.AI, GREEN),
 }
 
 
@@ -65,16 +87,23 @@ class Solver():
     def __init__(self):
         print "Inited"
 
+    def solve(self, map):
+        res = 'RIGHT'
+        return res
+
 
 class Render():
 
     def __init__(self):
-        pygame.init()
-        self.m_window = pygame.display.set_mode((640, 640))
-        print "Rednder inited"
+        if g_useRender: 
+            pygame.init()
+            self.m_window = pygame.display.set_mode((640, 640))
+            print "Render inited"
+        else:
+            print "Render is NOT used"
 
     def DrawMap(self, map):
-        if not str:
+        if not str or not g_useRender:
             return
 
         if not map.matrix:
@@ -93,13 +122,16 @@ class Render():
     def start(self):
         msg = None
         map = Map()
+        solver = Solver()
         while True:
-            for event in pygame.event.get():
-                a = 1
             time.sleep(0.1)
-
+            if g_useRender:
+                for event in pygame.event.get():
+                    a = 1
             if config.newMSG:
-                msg = ws_client.AccessVar(True, None)
+                msg = ws_client.AccessVarMSG(True, None)
                 map.parseMsg(msg)
+                turn = solver.solve(map)
+                ws_client.AccessVarResult(False, turn)
 
             self.DrawMap(map)
