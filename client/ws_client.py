@@ -7,12 +7,9 @@ import time
 import math
 import solver
 import config
-import sys
 
 
 startTurnTime = 0
-
-f = open('dump.txt','w')
 
 lock = threading.Lock()
 
@@ -88,15 +85,6 @@ def on_open(ws):
                 currTime = int(round(time.time()*1000))
                 print "time= " + str(currTime-startTurnTime)
                 startTurnTime = 0
-
-        #not used
-        for i in range(20):
-            time.sleep(0.5)
-            ws.send("RIGHT")  # %d" % i)
-        time.sleep(1)
-        ws.close()
-        f.close()
-        print "thread terminating..."
 
     thread.start_new_thread(run, ())
 
