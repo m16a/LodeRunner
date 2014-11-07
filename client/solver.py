@@ -81,6 +81,7 @@ class Node():
     def __init__(self, block_type):
         self.type = block_type
         self.joints = []
+        self.draw_cell = None
 
     def add_joint(self, joint):
         self.joints.append(joint)
@@ -121,6 +122,7 @@ class Map():
             else:
                 node = Node(legend[msg[c]])
 
+            node.draw_cell = Cell()
             self.matrix[x][y] = node
 
     def create_graph_info(self, alter=False):
@@ -618,13 +620,19 @@ def get_direction(me_point, target_point):
     else:
         return ''
 
+class Cell():
+    def __init__(self):
+        self.bgr_color = None
+        self.size = 16
+        self.type = None
+
 
 class Render():
 
     def __init__(self):
         if config.g_useRender: 
             pygame.init()
-            self.m_window = pygame.display.set_mode((900, 900))
+            self.m_window = pygame.display.set_mode((1000, 1000))
             print "Render inited"
         else:
             print "Render is NOT used"
@@ -632,7 +640,7 @@ class Render():
     def start(self):
         msg = None
         game_map = Map()
-        solver = Solver()
+        self.solver = Solver()
         while True:
             time.sleep(0.1)
             if config.g_useRender:
@@ -643,8 +651,8 @@ class Render():
                 game_map.parse_msg(msg)
                 game_map.create_graph_info()
                 game_map.dump_graph('dump_Grapth.txt') # Debug
-                turn = solver.solve(game_map)
-                solver.remember_previous_point()
+                turn = self.solver.solve(game_map)
+                self.solver.remember_previous_point()
                 print "turn: %s" % turn
                 if turn in ['LEFT', 'RIGHT']:
                     if game_map.look_direction != turn:
@@ -666,10 +674,48 @@ class Render():
         for i in range(map.size):
             for j in range(map.size):
                 if map.matrix[i][j]:
-                    pygame.draw.circle(
-                        self.m_window, (255, 165, 0), [10 * i, 10 * j], 5)
+                    node = map.matrix[i][j]
+                    self.drawNode(node,i,j)
+                    
+
         # pygame.draw.circle(self.m_window, BLUE, [100, 100], 20)
         pygame.display.flip()
+
+    def drawNode(self, node,i,j):
+        size = node.draw_cell.size
+
+        bgrd_color = None
+
+        if node.type == BlockType.NON_BREAKABLE:
+            bgrd_color = (64, 64, 64)
+        elif node.type == BlockType.BREAKABLE:
+            bgrd_color = (255, 204, 153)
+        elif node.type == BlockType.ME:
+            bgrd_color = (0, 255, 0)
+        elif node.type == BlockType.AI:
+            bgrd_color = (255, 0, 0)
+        elif node.type == BlockType.GOLD:
+            bgrd_color = (255, 255, 0)
+
+        if bgrd_color:
+            pygame.draw.rect(
+                        self.m_window, bgrd_color, (size * i, size * j, size+1, size+1), 0)
+
+        #path
+        center = (int(size * (i+0.5)), int(size * (j+0.5)))
+        if (i,j) in self.solver.route:
+            pygame.draw.circle(self.m_window, (51,153,255), center, 5)
+
+
+        #grid
+        pygame.draw.rect(
+                        self.m_window, (128, 128, 128), (size * i, size * j, size+1, size+1), 1)
+        
+        #pygame.draw.line(self.m_window, (128, 0, 0), center, end, 1)
+        for joint in node.joints:
+            delta = (joint.point[0]-i, joint.point[1]-j)
+            end = (center[0] + delta[0] * size / 2, center[1] + delta[1] * size / 2)
+            pygame.draw.line(self.m_window, (128, 0, 0), center, end, 1)
 
 """
 TODO:
