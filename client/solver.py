@@ -24,6 +24,9 @@ class BlockType:
     ME_on_Ladder = 11
     AI_on_Ladder = 12
     ENEMY_on_Ladder = 13
+    ME_on_Pipe = 14
+    AI_on_Pipe = 15
+    ENEMY_on_Pipe = 16
 
 legend = {
     u' ': BlockType.EMPTY,
@@ -51,14 +54,14 @@ legend = {
     u'►': BlockType.ME,
     u']': BlockType.ME,
     u'[': BlockType.ME,
-    u'}': BlockType.ME,
-    u'{': BlockType.ME,
+    u'}': BlockType.ME_on_Pipe,
+    u'{': BlockType.ME_on_Pipe,
 
     u'Q': BlockType.AI_on_Ladder,
     u'«': BlockType.AI,
     u'»': BlockType.AI,
-    u'<': BlockType.AI,
-    u'>': BlockType.AI,
+    u'<': BlockType.AI_on_Pipe,
+    u'>': BlockType.AI_on_Pipe,
     u'X': BlockType.NON_BREAKABLE,
 
     u'~': BlockType.PIPE,
@@ -67,8 +70,8 @@ legend = {
     u')': BlockType.ENEMY,
     u'(': BlockType.ENEMY,
     u'U': BlockType.ENEMY_on_Ladder,
-    u'Э': BlockType.ENEMY,
-    u'Є': BlockType.ENEMY,
+    u'Э': BlockType.ENEMY_on_Pipe,
+    u'Є': BlockType.ENEMY_on_Pipe,
 
 }
 
@@ -157,20 +160,28 @@ class Map():
             and self.can_move_to_point(get_up_point(point))
 
     def can_move_down(self, point):
-        return self.get_type(point) in [BlockType.LADDER, BlockType.PIPE, BlockType.ME, BlockType.EMPTY,
+        return self.get_type(point) in [BlockType.LADDER, BlockType.PIPE, BlockType.ME, BlockType.EMPTY, BlockType.GOLD,
                                         BlockType.HOLE, BlockType.BREAKABLE, BlockType.AI,
                                         BlockType.ME_on_Ladder, BlockType.AI_on_Ladder, BlockType.ENEMY_on_Ladder]\
             and self.can_move_to_point(get_down_point(point))
 
     def can_move_right(self, point):
-        return self.get_type(point) in [BlockType.EMPTY, BlockType.ME, BlockType.PIPE, BlockType.LADDER,
-                                        BlockType.ME_on_Ladder, BlockType.AI_on_Ladder, BlockType.ENEMY_on_Ladder]\
-            and self.can_stand_on(get_down_point(point)) and self.can_move_to_point(get_right_point(point))
+        if self.can_move_to_point(get_right_point(point)):
+            return (self.get_type(point) in [BlockType.EMPTY, BlockType.ME, BlockType.PIPE, BlockType.LADDER,
+                                             BlockType.GOLD, BlockType.ME_on_Ladder, BlockType.AI_on_Ladder,
+                                             BlockType.ENEMY_on_Ladder] and self.can_stand_on(get_down_point(point)))\
+                or self.is_pipe(point)
 
     def can_move_left(self, point):
-        return self.get_type(point) in [BlockType.EMPTY, BlockType.ME, BlockType.PIPE, BlockType.LADDER,
-                                        BlockType.ME_on_Ladder, BlockType.AI_on_Ladder, BlockType.ENEMY_on_Ladder]\
-            and self.can_stand_on(get_down_point(point)) and self.can_move_to_point(get_left_point(point))
+        if self.can_move_to_point(get_left_point(point)):
+            return (self.get_type(point) in [BlockType.EMPTY, BlockType.ME, BlockType.PIPE, BlockType.LADDER,
+                                             BlockType.GOLD, BlockType.ME_on_Ladder, BlockType.AI_on_Ladder,
+                                             BlockType.ENEMY_on_Ladder] and self.can_stand_on(get_down_point(point)))\
+                or self.is_pipe(point)
+
+    def is_pipe(self, point):
+        return self.get_type(point) in [BlockType.PIPE, BlockType.ME_on_Pipe,
+                                        BlockType.AI_on_Pipe, BlockType.ENEMY_on_Pipe]
 
     def can_drill_and_move(self, point):
         return point[1]+2 < self.size and self.get_type(get_down_point(point)) == BlockType.BREAKABLE\
@@ -178,15 +189,20 @@ class Map():
             and self.can_move_to_point(get_down_point((point[0], point[1]+1))) and self.me_point != point
 
     def can_move_to_point(self, end_point):
-        end_type = self.get_type(end_point)
-        if end_type in [BlockType.TRAP, BlockType.AI, BlockType.ENEMY, BlockType.NON_BREAKABLE, BlockType.BREAKABLE]:
-            return False
-        if end_type in [BlockType.EMPTY, BlockType.LADDER, BlockType.PIPE, BlockType.GOLD, BlockType.ME,
-                        BlockType.ME_on_Ladder]:
-            return True
-        if end_type == BlockType.HOLE and self.can_move_to_point((end_point[0], end_point[1]+1)):
-            return True
+        if end_point[0] < self.size and end_point[1] < self.size:
+            end_type = self.get_type(end_point)
+            if end_type in [BlockType.TRAP, BlockType.AI, BlockType.ENEMY, BlockType.NON_BREAKABLE, BlockType.BREAKABLE]:
+                return False
+            if end_type in [BlockType.EMPTY, BlockType.LADDER, BlockType.PIPE, BlockType.GOLD, BlockType.ME,
+                            BlockType.ME_on_Ladder]:
+                return True
+            if end_type == BlockType.HOLE and self.can_move_to_point((end_point[0], end_point[1]+1)):
+                return True
         return False
+
+    def can_stand_on(self, point):
+        return self.get_type(point) in [BlockType.BREAKABLE, BlockType.NON_BREAKABLE, BlockType.LADDER, BlockType.ENEMY,
+                                        BlockType.ME_on_Ladder]
 
     def dump_graph(self, file_name):
         with open(file_name, 'w') as f:
@@ -274,35 +290,6 @@ class Map():
 
         return False
 
-    def find_nearest_type(self, start, block_type):
-        m = [[None for x in range(self.size)] for x in range(self.size)]
-        gold_pos = None
-        queue = []
-        m[start[0]][start[1]] = 0
-        queue.append(start)
-
-        while queue:
-            #print queue
-            #f.write("%s" % m)
-            elem = queue.pop(0)
-
-            elem_age = m[elem[0]][elem[1]]
-            if self.matrix[elem[0]][elem[1]].type == block_type:
-                gold_pos = elem
-                break
-
-            joints = self.matrix[elem[0]][elem[1]].joints
-
-            for joint in joints:
-                j_point = joint.point
-                if m[j_point[0]][j_point[1]] is not None:
-                    continue
-
-                m[j_point[0]][j_point[1]] = elem_age + 1
-                queue.append(j_point)
-
-        return gold_pos
-
     def get_scan_dict(self, start):
         m = [[None for x in range(self.size)] for x in range(self.size)]
         queue = []
@@ -326,7 +313,7 @@ class Map():
             for joint in joints:
                 j_point = joint.point
                 for point in self.get_neighbor_points(j_point):
-                    if self.get_type(point) in [BlockType.AI, BlockType.AI_on_Ladder]\
+                    if self.get_type(point) in [BlockType.AI, BlockType.AI_on_Ladder, BlockType.AI_on_Pipe]\
                             and not point in scan_dict['ai']:
                         scan_dict['ai'].append(point)
                     if self.get_type(point) in [BlockType.ENEMY, BlockType.ENEMY_on_Ladder]\
@@ -406,9 +393,6 @@ class Map():
     def get_node(self, point):
         return self.matrix[point[0]][point[1]]
 
-    def can_stand_on(self, point):
-        return self.get_type(point) in [BlockType.BREAKABLE, BlockType.NON_BREAKABLE, BlockType.LADDER, BlockType.ENEMY]
-
 
 def get_up_point(point):
     return point[0], point[1] - 1
@@ -437,7 +421,6 @@ class Unit(object):
 class Solver():
 
     def __init__(self):
-        self.goldPos = None
         self.route = None
         self.queue = []
         self.me_point = None
@@ -462,10 +445,11 @@ class Solver():
             if action:
                 return action
 
-        if not self.goldPos:
-            self.goldPos = self.get_random_gold()
+        if not self.gold_candidates:
+            #self.goldPos = self.get_random_gold()
+            return ''
 
-        self.route = self.game_map.get_route(self.me_point, self.goldPos)
+        self.route = self.game_map.get_route(self.me_point, self.gold_candidates[0])
         print "path= %s" % self.route
 
         if self.route:
@@ -496,7 +480,6 @@ class Solver():
         self.me_point = self.game_map.me_point
         self.curr_node = self.game_map.matrix[self.me_point[0]][self.me_point[1]]
         self.surround_points = self.get_surround_points()
-        self.goldPos = self.game_map.find_nearest_type(self.me_point, BlockType.GOLD)
 
         self.gold_candidates = self.game_map.get_scan_dict(self.me_point)['gold']
         self.ai_points = self.game_map.get_scan_dict(self.me_point)['ai']
@@ -535,7 +518,7 @@ class Solver():
 
     def get_nearest_ai_point(self):
         for point in self.surround_points:
-            if self.game_map.get_type(point) == BlockType.AI:
+            if self.game_map.get_type(point) in [BlockType.AI, BlockType.AI_on_Ladder, BlockType.AI_on_Pipe]:
                 return point
 
     def can_move_in_direction(self, direction):
@@ -564,12 +547,11 @@ class Solver():
         return gold_pos_list[0]
 
     def is_gold_under_me(self):
-        if self.me_point[0] == self.goldPos[0]:
+        if self.me_point[0] == self.gold_candidates[0][0]:
             if self.game_map.get_type((self.me_point[0], self.me_point[1]+2)) == BlockType.BREAKABLE\
                     and self.curr_node.type != BlockType.LADDER:
                 start_point = (self.me_point[0], self.me_point[1] + 2)
-                route = self.game_map.get_route(start_point, self.goldPos)
-                print "route to gold under me: %s" % route
+                route = self.game_map.get_route(start_point, self.gold_candidates[0])
                 route_node_types = [self.game_map.get_type(point) for point in route][:-1]
                 if route_node_types:
                     if route_node_types.count(route_node_types[0]) == len(route_node_types):
