@@ -6,7 +6,8 @@ import ws_client
 import random
 import copy
 
-g_useRender = False
+if config.g_useRender:
+    import pygame
 
 
 class BlockType:
@@ -621,14 +622,22 @@ def get_direction(me_point, target_point):
 class Render():
 
     def __init__(self):
-        print "Render is NOT used"
-
+        if config.g_useRender: 
+            pygame.init()
+            self.m_window = pygame.display.set_mode((900, 900))
+            print "Render inited"
+        else:
+            print "Render is NOT used"
+        
     def start(self):
         msg = None
         game_map = Map()
         solver = Solver()
         while True:
             time.sleep(0.1)
+            if config.g_useRender:
+                for event in pygame.event.get():
+                    NOP = 1
             if config.newMSG:
                 msg = ws_client.AccessVarMSG(True, None)
                 game_map.parse_msg(msg)
@@ -642,6 +651,25 @@ class Render():
                         game_map.look_direction = turn
                 print "Look direction: %s" % game_map.look_direction
                 ws_client.AccessVarResult(False, turn)
+                if config.g_useRender:
+                    self.DrawMap(game_map)
+
+    def DrawMap(self, map):
+        if not config.g_useRender:
+            return
+
+        if not map.matrix:
+            return
+
+        self.m_window.fill((224, 224, 224))
+
+        for i in range(map.size):
+            for j in range(map.size):
+                if map.matrix[i][j]:
+                    pygame.draw.circle(
+                        self.m_window, (255, 165, 0), [10 * i, 10 * j], 5)
+        # pygame.draw.circle(self.m_window, BLUE, [100, 100], 20)
+        pygame.display.flip()
 
 """
 TODO:
