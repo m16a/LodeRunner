@@ -4,6 +4,7 @@ import math
 import config
 import ws_client
 import random
+import copy
 
 g_useRender = False
 
@@ -19,6 +20,7 @@ class BlockType:
     PIPE = 7
     ENEMY = 8
     TRAP = 9
+    HOLE = 10
 
 legend = {
     u' ': BlockType.EMPTY,
@@ -26,8 +28,9 @@ legend = {
     u"☼": BlockType.NON_BREAKABLE,
 
     u'#': BlockType.BREAKABLE,
-    u'.': BlockType.TRAP,
-    u'*': BlockType.TRAP,
+    u'.': BlockType.HOLE,
+    u'*': BlockType.HOLE,
+
     u'1': BlockType.TRAP,
     u'2': BlockType.TRAP,
     u'3': BlockType.TRAP,
@@ -53,7 +56,7 @@ legend = {
     u'»': BlockType.AI,
     u'<': BlockType.AI,
     u'>': BlockType.AI,
-    u'X': BlockType.AI,
+    u'X': BlockType.NON_BREAKABLE,
 
     u'~': BlockType.PIPE,
 
@@ -119,76 +122,73 @@ class Map():
 
             self.matrix[x][y] = node
 
-    def create_graph_info(self):
-        with open('dump_Graph.txt', 'w') as f:
-            for i in range(self.size):
-                for j in range(self.size):
-                    curr = self.matrix[i][j]
-                    if curr is None:
-                        print "WARNING map no element"
-                        continue
+    def create_graph_info(self, alter=False):
 
-                    #create joints
+        for i in range(self.size):
+            for j in range(self.size):
+                curr = self.matrix[i][j]
+                if curr is None:
+                    print "WARNING map no element"
+                    continue
 
-                    curr_left = self.get_left_node(i, j)
-                    curr_right = self.get_right_node(i, j)
-                    curr_up = self.get_up_node(i, j)
-                    curr_down = self.get_down_node(i, j)
+                curr_left = self.get_left_node(i, j)
+                curr_right = self.get_right_node(i, j)
+                curr_up = self.get_up_node(i, j)
+                curr_down = self.get_down_node(i, j)
 
-                    if curr.type == BlockType.EMPTY or curr.type == BlockType.ME:
-                        if curr_down and curr_down.type == BlockType.NON_BREAKABLE\
-                                or curr_down.type == BlockType.BREAKABLE\
-                                or curr_down.type == BlockType.LADDER\
-                                or curr_down.type == BlockType.ENEMY\
-                                or curr_down.type == BlockType.AI:
-                            if curr_left and self.can_move_to_node(curr_left, i, j):
-                                joint = Joint((i-1, j))
-                                curr.add_joint(joint)
-
-                            if curr_right and self.can_move_to_node(curr_right, i, j):
-                                joint = Joint((i+1, j))
-                                curr.add_joint(joint)
-
-                        if curr_down:
-                            if self.can_move_to_node(curr_down, i, j)\
-                                    or (self.can_drill_and_move(i, j+1) and not self.me_point == (i, j)):
-                                joint = Joint((i, j+1))
-                                curr.add_joint(joint)
-
-                    if curr.type == BlockType.LADDER or curr.type == BlockType.PIPE:
-                        if curr_left and self.can_move_to_node(curr_left, i, j):
+                if curr.type == BlockType.EMPTY or curr.type == BlockType.ME:
+                    if curr_down and curr_down.type == BlockType.NON_BREAKABLE\
+                            or curr_down.type == BlockType.BREAKABLE\
+                            or curr_down.type == BlockType.LADDER\
+                            or curr_down.type == BlockType.ENEMY\
+                            or curr_down.type == BlockType.AI:
+                        if curr_left and self.can_move_to_point((i-1, j)):
                             joint = Joint((i-1, j))
                             curr.add_joint(joint)
 
-                        if curr_right and self.can_move_to_node(curr_right, i, j):
+                        if curr_right and self.can_move_to_point((i+1, j)):
                             joint = Joint((i+1, j))
                             curr.add_joint(joint)
 
-                        if curr.type == BlockType.LADDER:
-                            if curr_up and (curr_up.type == BlockType.LADDER or curr_up.type == BlockType.EMPTY
-                                            or curr_up.type == BlockType.GOLD or curr_up.type == BlockType.PIPE):
-                                joint = Joint((i, j-1))
-                                curr.add_joint(joint)
-
-                        if curr_down and self.can_move_to_node(curr_down, i, j):
+                    if curr_down:
+                        if self.can_move_to_point((i, j+1)) or self.can_drill_and_move(i, j+1, alter):
                             joint = Joint((i, j+1))
                             curr.add_joint(joint)
 
-                    if curr.type == BlockType.BREAKABLE and curr_down and self.can_move_to_node(curr_down, i, j):
+                if curr.type == BlockType.LADDER or curr.type == BlockType.PIPE:
+                    if curr_left and self.can_move_to_point((i-1, j)):
+                        joint = Joint((i-1, j))
+                        curr.add_joint(joint)
+
+                    if curr_right and self.can_move_to_point((i+1, j)):
+                        joint = Joint((i+1, j))
+                        curr.add_joint(joint)
+
+                    if curr.type == BlockType.LADDER:
+                        if curr_up and curr_up.type \
+                                in [BlockType.LADDER, BlockType.EMPTY, BlockType.GOLD, BlockType.PIPE]:
+                            joint = Joint((i, j-1))
+                            curr.add_joint(joint)
+
+                    if curr_down and self.can_move_to_point((i, j+1)):
                         joint = Joint((i, j+1))
                         curr.add_joint(joint)
 
-            #debug dump Graph
-            if True:
-                graph_str = ''
-                for i in range(self.size):
-                    for j in range(self.size):
-                        curr = self.matrix[i][j]
-                        joints_str = ""
-                        if curr.joints:
-                            joints_str = ''.join(["%s" % str(jn.point) for jn in curr.joints])
-                        graph_str += "(%d, %d): %d [%s]\n " % (i, j, curr.type, joints_str)
-                f.write(graph_str)
+                if curr.type == BlockType.BREAKABLE and curr_down and self.can_move_to_point((i, j+1)):
+                    joint = Joint((i, j+1))
+                    curr.add_joint(joint)
+
+    def dump_graph(self, file_name):
+        with open(file_name, 'w') as f:
+            graph_str = ''
+            for i in range(self.size):
+                for j in range(self.size):
+                    curr = self.matrix[i][j]
+                    joints_str = ""
+                    if curr.joints:
+                        joints_str = ''.join(["%s" % str(jn.point) for jn in curr.joints])
+                    graph_str += "(%d, %d): %d [%s]\n " % (i, j, curr.type, joints_str)
+            f.write(graph_str)
 
     def get_left_node(self, i, j):
         res = None
@@ -236,28 +236,26 @@ class Map():
     def get_neighbor_nodes_types(self, point):
         return [self.get_type(p) for p in self.get_neighbor_points(point)]
 
-    def can_move_to_node(self, node, x_point, y_point):
-        typ = node.type
-        down_node_typ = self.matrix[x_point][y_point].type
-        if down_node_typ == BlockType.TRAP:
-            if typ == BlockType.EMPTY or typ == BlockType.GOLD:
-                return False
-        if typ == BlockType.EMPTY or typ == BlockType.LADDER or typ == BlockType.GOLD\
-                or typ == BlockType.PIPE or typ == BlockType.ME:
+    def can_move_to_point(self, end_point):
+        end_type = self.get_type(end_point)
+
+        if end_type in [BlockType.TRAP, BlockType.AI, BlockType.ENEMY, BlockType.NON_BREAKABLE, BlockType.BREAKABLE]:
+            return False
+
+        if end_type in [BlockType.EMPTY, BlockType.LADDER, BlockType.PIPE, BlockType.GOLD, BlockType.ME]:
             return True
+
+        if end_type == BlockType.HOLE and self.can_move_to_point((end_point[0], end_point[1]+1)):
+            return True
+
         return False
 
     def can_ai_get_me(self, point):
-        if BlockType.AI in [node.type for node in [self.matrix[p[0]][p[1]] for p in self.get_revertible_points(point)]]:
-            return True
-        return False
+        return BlockType.AI in self.get_neighbor_nodes_types(point)
 
-    def get_revertible_points(self, point):
-        next_points = self.get_neighbor_points(point)
-        return [p for p in next_points if point in [j.point for j in self.matrix[p[0]][p[1]].joints]]
-
-    def can_drill_and_move(self, x, y):
-        return self.matrix[x][y].type == BlockType.BREAKABLE and self.can_move_to_node(self.get_down_node(x, y), x, y)
+    def can_drill_and_move(self, x, y, alter):
+        return self.matrix[x][y].type == BlockType.BREAKABLE and self.can_move_to_point((x, y+1))\
+            and not self.me_point == (x, y-1) and not alter
 
     def run_wave(self, m, start, end):
         queue = []
@@ -312,6 +310,34 @@ class Map():
                 queue.append(j_point)
 
         return gold_pos
+
+    def find_gold_candidates(self, start):
+        m = [[None for x in range(self.size)] for x in range(self.size)]
+        gold_pos = None
+        queue = []
+        m[start[0]][start[1]] = 0
+        queue.append(start)
+        gold_candidates = []
+
+        while queue and len(gold_candidates) < 3:
+
+            elem = queue.pop(0)
+
+            elem_age = m[elem[0]][elem[1]]
+            if self.matrix[elem[0]][elem[1]].type == BlockType.GOLD:
+                gold_candidates.append(elem)
+
+            joints = self.matrix[elem[0]][elem[1]].joints
+
+            for joint in joints:
+                j_point = joint.point
+                if m[j_point[0]][j_point[1]] is not None:
+                    continue
+
+                m[j_point[0]][j_point[1]] = elem_age + 1
+                queue.append(j_point)
+
+        return gold_candidates
 
     def get_prev_age_neighbor(self, m, node):
         i = node[0]
@@ -379,40 +405,16 @@ class Map():
             return self.me_point[0] - 1, self.me_point[1] + 1
 
     def can_drill_point(self, point):
-        return self.matrix[point[0]][point[1]].type == BlockType.BREAKABLE\
-            and self.matrix[point[0]][point[1] - 1].type != BlockType.LADDER
-
-    def can_move_to_point(self, point):
-        return self.can_move_to_node(self.matrix[point[0]][point[1]], point[0], point[1])
-
-    def can_move_forward(self):
-        return self.can_move_to_point(self.next_horizontal_point())
-
-    def next_horizontal_point(self):
-        if self.look_direction == 'RIGHT':
-            return self.me_point[0] + 1, self.me_point[1]
-        else:
-            return self.me_point[0] - 1, self.me_point[1]
-
-    def past_horizontal_point(self):
-        if self.look_direction == 'RIGHT':
-            return self.me_point[0] - 1, self.me_point[1]
-        else:
-            return self.me_point[0] + 1, self.me_point[1]
-
-    def next_horizontal_node(self):
-        next_point = self.next_horizontal_point()
-        return self.matrix[next_point[0]][next_point[1]]
-
-    def past_horizontal_node(self):
-        past_point = self.past_horizontal_point()
-        return self.matrix[past_point[0]][past_point[1]]
+        return self.get_type(point) == BlockType.BREAKABLE and self.get_type((point[0], point[1]-1)) != BlockType.LADDER
 
     def get_type(self, point):
         return self.matrix[point[0]][point[1]].type
 
     def is_ai_next_to_me(self, point):
         return abs(point[0] - self.me_point[0]) == 1
+
+    def get_node(self, point):
+        return self.matrix[point[0]][point[1]]
 
 
 class Unit(object):
@@ -426,75 +428,53 @@ class Unit(object):
 class Solver():
 
     def __init__(self):
-        print "Inited"
         self.goldPos = None
-        self.ai_position = Node
-        self.enemy_position = None
         self.route = None
         self.queue = []
         self.me_point = None
         self.curr_node = None
+        self.gold_candidates = []
+        self.alter_gold_candidates = []
+        self.game_map = None
+        self.surround_points = None
+        self.is_in_danger = None
+        self.previous_point = None
+        self.alter_map = None
 
     def solve(self, game_map):
-        self.me_point = game_map.me_point
-        self.curr_node = game_map.matrix[self.me_point[0]][self.me_point[1]]
-        print "Me %s: %s" % ([self.me_point], self.curr_node.type)
-
-
-        surround_points = self.get_surround_points(game_map)
-        if is_player_chased(surround_points, game_map):
-            print "Player is being chased"
-            nearest_ai_point = get_nearest_ai_point(surround_points, game_map)
-            print "Nearest AI point: %s" % [nearest_ai_point]
-            if not game_map.is_ai_next_to_me(nearest_ai_point):
-                nearest_ai_direction = get_direction(self.me_point, get_nearest_ai_point(surround_points, game_map))
-                drill_point = get_drill_point(self.me_point, get_multiplier(nearest_ai_direction))
-                print "drill_point: %s, type: %s" % (drill_point, game_map.get_type(drill_point))
-                print "can drill: %s" % game_map.can_drill_point(drill_point)
-                if game_map.can_drill_point(drill_point) and self.curr_node.type != BlockType.PIPE:
-                    print "Making a trap ...."
-                    return '%s,%s' % ('ACT', nearest_ai_direction)
+        self.turn_related_assignments(game_map)
 
         if self.queue:
-            print "take an action from queue: %s" % self.queue[0]
-            move = self.queue.pop(0)
-            if game_map.can_move_forward():
-                print "move: %s" % move
-                return move
-            else:
-                print "Can't move forward: %s" % get_opposite_direction(game_map.look_direction)
-                return get_opposite_direction(game_map.look_direction)
+            print "self.queue: %s" % self.queue
+            return self.queue.pop(0)
 
-        self.goldPos = game_map.find_nearest_type(game_map.me_point, BlockType.GOLD)
+        if self.is_in_danger:
+            action = self.get_action_when_in_danger()
+            if action:
+                return action
 
         if not self.goldPos:
-            return self.get_no_gold_action(game_map)
-        print "goldPos= %d %d " % (self.goldPos[0], self.goldPos[1])
+            return self.get_no_gold_action()
 
-        self.route = game_map.get_route(game_map.me_point, self.goldPos)
+        self.route = self.game_map.get_route(self.me_point, self.goldPos)
         print "path= %s" % self.route
 
         if self.route:
             next_point = self.route[0]
-            revertible_points = game_map.get_revertible_points(next_point)
-            revertible_points_types = [game_map.get_type(p) for p in revertible_points]
-            print "next_point: %s: %s" % (next_point, game_map.matrix[next_point[0]][next_point[1]].type)
-            print "revertible_point: %s" % revertible_points
-            print "revertible_point node types: %s" % revertible_points_types
-            if game_map.can_ai_get_me(next_point):
-                print "AI can get me"
-                return ''
 
-            if self.should_drill(game_map):
+            if self.game_map.can_ai_get_me(next_point):
+                print "AI can get me!!! Get Back!!!"
+                return get_direction(self.me_point, self.previous_point)
 
-                if self.is_gold_under_me(game_map):
-                    print "Gold is under me"
-                    turn = get_direction(self.me_point, next_point)
-                    turn_back = get_opposite_direction(turn)
-                    self.queue.append('%s,%s' % ('ACT', turn_back))
-                    self.queue.append(turn_back)
-                    return turn
+            if self.is_gold_under_me(game_map):
+                print "Gold is under me"
+                turn = get_direction(self.me_point, next_point)
+                turn_back = get_opposite_direction(turn)
+                self.queue.append('%s,%s' % ('ACT', turn_back))
+                self.queue.append(turn_back)
+                return turn
 
+            if self.should_drill():
                 direction = get_direction(self.me_point, self.route[0])
                 self.queue.append(direction)
                 return '%s,%s' % ('ACT', direction)
@@ -506,25 +486,74 @@ class Solver():
             print "WARNING - no route found"
             return ''
 
-    def should_drill(self, game_map):
+    def turn_related_assignments(self, game_map):
+        self.game_map = game_map
+        self.alter_map = copy.deepcopy(self.game_map)
+        self.alter_map.create_graph_info(True)
+        self.alter_map.dump_graph('dump_Grapth_Alter.txt') # Debug
+        self.me_point = self.game_map.me_point
+        self.curr_node = self.game_map.matrix[self.me_point[0]][self.me_point[1]]
+        self.surround_points = self.get_surround_points()
+        self.goldPos = self.game_map.find_nearest_type(self.me_point, BlockType.GOLD)
+        self.gold_candidates = self.game_map.find_gold_candidates(self.me_point)
+        self.alter_gold_candidates = self.alter_map.find_gold_candidates(self.me_point)
+        self.is_in_danger = self.is_player_in_danger()
+        print "Me %s: %s" % ([self.me_point], self.curr_node.type)
+        print "gold_candidates: %s" % self.gold_candidates
+        print "alter_gold_candidates: %s" % list(set(self.alter_gold_candidates) - set(self.gold_candidates))
+
+    def is_player_in_danger(self):
+        if BlockType.AI in [self.game_map.get_type(p) for p in self.surround_points]:
+            return True
+        return False
+
+    def get_action_when_in_danger(self):
+        print "Player is in danger !!!"
+        nearest_ai_point = self.get_nearest_ai_point()
+        print "Nearest AI point: %s" % [nearest_ai_point]
+        if not self.game_map.is_ai_next_to_me(nearest_ai_point):
+            nearest_ai_direction = get_direction(self.me_point, nearest_ai_point)
+            drill_point = get_drill_point(self.me_point, get_multiplier(nearest_ai_direction))
+            print "drill_point: %s, type: %s" % (drill_point, self.game_map.get_type(drill_point))
+            print "can drill: %s" % self.game_map.can_drill_point(drill_point)
+            if self.game_map.can_drill_point(drill_point) and self.curr_node.type != BlockType.PIPE:
+                print "Making a trap ...."
+                return '%s,%s' % ('ACT', nearest_ai_direction)
+            else:
+                print "Escaping"
+                direction = get_direction(nearest_ai_point, self.me_point)
+                if self.can_move_in_direction(direction):
+                    return get_direction(nearest_ai_point, self.me_point)
+                else:
+                    return None
+
+    def get_nearest_ai_point(self):
+        for point in self.surround_points:
+            if self.game_map.get_type(point) == BlockType.AI:
+                return point
+
+    def can_move_in_direction(self, direction):
+        point = self.me_point[0] + get_multiplier(direction), self.me_point[1]
+        return self.game_map.can_move_to_point(point)
+
+    def should_drill(self):
         if len(self.route) > 1:
-            breakable_next_to_next = game_map.get_type(self.route[1]) == BlockType.BREAKABLE
-            #breakable_next_to_next = game_map.matrix[self.route[1][0]][self.route[1][1]].type == BlockType.BREAKABLE
-            x_point_of_block_is_next_to_me = abs(game_map.me_point[0] - self.route[1][0]) == 1
-            ai_cant_get_me = BlockType.AI not in game_map.get_neighbor_nodes_types(self.me_point)
+            breakable_next_to_next = self.game_map.get_type(self.route[1]) == BlockType.BREAKABLE
+            x_point_of_block_is_next_to_me = abs(self.me_point[0] - self.route[1][0]) == 1
+            ai_cant_get_me = BlockType.AI not in self.game_map.get_neighbor_nodes_types(self.me_point)
             return breakable_next_to_next and x_point_of_block_is_next_to_me and ai_cant_get_me
 
-    def get_no_gold_action(self, game_map):
+    def get_no_gold_action(self):
         print "WARNING - no gold found"
-        if game_map.can_escape():
+        if self.game_map.can_escape():
             print "Escape plan"
-            self.queue.append(game_map.look_direction)
+            self.queue.append(self.game_map.look_direction)
             return 'ACT'
         else:
-            joints = game_map.matrix[game_map.me_point[0]][game_map.me_point[1]].joints
+            joints = self.game_map.get_node(self.me_point).joints
             if joints:
                 index = random.randint(0, len(joints) - 1)
-                return get_direction(game_map.me_point, joints[index].point)
+                return get_direction(self.me_point, joints[index].point)
             return ''
 
     def is_gold_under_me(self, game_map):
@@ -540,28 +569,19 @@ class Solver():
                         return True
         return False
 
-    def get_surround_points(self, game_map):
+    def get_surround_points(self):
         surround_points = []
         multipliers = [-1, 1]
         for i in range(1, 5):
             for multiplier in multipliers:
                 x_position = self.me_point[0] + multiplier * i
 
-                if x_position < game_map.size:
+                if x_position < self.game_map.size:
                     surround_points.append((x_position, self.me_point[1]))
         return surround_points
 
-
-def is_player_chased(points, game_map):
-    if BlockType.AI in [game_map.matrix[p[0]][p[1]].type for p in points]:
-        return True
-    return False
-
-
-def get_nearest_ai_point(points, game_map):
-    for point in points:
-        if game_map.matrix[point[0]][point[1]].type == BlockType.AI:
-            return point
+    def remember_previous_point(self):
+        self.previous_point = self.me_point[0], self.me_point[1]
 
 
 def get_opposite_direction(direction):
@@ -586,7 +606,6 @@ def get_direction(me_point, target_point):
     dx = target_point[0] - me_point[0]
     dy = target_point[1] - me_point[1]
 
-    #print self.route[0], p
     if dx > 0:
         return 'RIGHT'
     elif dx < 0:
@@ -614,7 +633,9 @@ class Render():
                 msg = ws_client.AccessVarMSG(True, None)
                 game_map.parse_msg(msg)
                 game_map.create_graph_info()
+                game_map.dump_graph('dump_Grapth.txt') # Debug
                 turn = solver.solve(game_map)
+                solver.remember_previous_point()
                 print "turn: %s" % turn
                 if turn in ['LEFT', 'RIGHT']:
                     if game_map.look_direction != turn:
@@ -625,7 +646,7 @@ class Render():
 """
 TODO:
 1. improve should_drill (alternative grapth where we can't move through breakable)
-2. make sure player doesn't let ai catch him
-3. better handling no gold found
+2. better handling no gold found
+3. fix gold is under me
 4. improve logistics
 """
