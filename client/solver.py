@@ -76,6 +76,10 @@ legend = {
 
 }
 
+class Person():
+    ME = 1
+    AI = 2
+    ENEMY = 3
 
 class Joint():
     def __init__(self, point):
@@ -88,6 +92,7 @@ class Node():
         self.type = block_type
         self.joints = []
         self.draw_cell = None
+        self.person = None
 
     def add_joint(self, joint):
         self.joints.append(joint)
@@ -116,15 +121,30 @@ class Map():
             x = c % sqrt_len
             y = c // sqrt_len
 
-            tmp = Node(legend[msg[c]])
-            if tmp.type in [BlockType.ME, BlockType.ME_on_Ladder]:
+            
+            new_legend = legend[msg[c]]
+            tmp = Node(new_legend)
+            person = None
+
+            if tmp.type in [BlockType.ME_on_Ladder, BlockType.ME, BlockType.ME_on_Pipe]:
                 self.me_point = (x, y)
+                #print "!!!!!!!accept Person"
+                person = Person.ME
+            elif tmp.type in [BlockType.AI_on_Ladder, BlockType.AI, BlockType.AI_on_Pipe]:
+                person = Person.AI
+            elif tmp.type in [BlockType.ENEMY_on_Ladder, BlockType.ENEMY, BlockType.ENEMY_on_Pipe]:
+                person = Person.ENEMY
 
-            if msg[c] == u'{' or msg[c] == u'}':
-                node = Node(legend[u'~'])
-            else:
-                node = Node(legend[msg[c]])
 
+            if tmp.type in [BlockType.ME_on_Ladder, BlockType.AI_on_Ladder, BlockType.ENEMY_on_Ladder]:
+                new_legend = BlockType.LADDER
+            elif tmp.type in [BlockType.ME_on_Pipe, BlockType.AI_on_Pipe, BlockType.ENEMY_on_Pipe]:
+                new_legend = BlockType.PIPE
+            elif tmp.type in [BlockType.ME, BlockType.AI, BlockType.ENEMY]:
+                new_legend = BlockType.EMPTY
+
+            node = Node(new_legend)
+            node.person = person
             node.draw_cell = Cell()
             self.matrix[x][y] = node
 
@@ -166,21 +186,23 @@ class Map():
         return self.get_type(point) in [BlockType.LADDER, BlockType.PIPE, BlockType.ME, BlockType.EMPTY, BlockType.GOLD,
                                         BlockType.HOLE, BlockType.BREAKABLE, BlockType.AI,
                                         BlockType.ME_on_Ladder, BlockType.AI_on_Ladder, BlockType.ENEMY_on_Ladder]\
-            and self.can_move_to_point(get_down_point(point))
+            and self.can_move_to_point(get_down_point(point))#\
+            #or self.get_type(get_down_point(point)) == BlockType.BREAKABLE and\
+            #self.get_type(get_down_point(get_down_point(point))) not in [BlockType.BREAKABLE, BlockType.NON_BREAKABLE]
 
     def can_move_right(self, point):
         if self.can_move_to_point(get_right_point(point)):
             return (self.get_type(point) in [BlockType.EMPTY, BlockType.ME, BlockType.PIPE, BlockType.LADDER,
                                              BlockType.GOLD, BlockType.ME_on_Ladder, BlockType.AI_on_Ladder,
                                              BlockType.ENEMY_on_Ladder] and self.can_stand_on(get_down_point(point)))\
-                or self.is_pipe(point)
+                or self.get_type(point) in [BlockType.LADDER, BlockType.PIPE]
 
     def can_move_left(self, point):
         if self.can_move_to_point(get_left_point(point)):
             return (self.get_type(point) in [BlockType.EMPTY, BlockType.ME, BlockType.PIPE, BlockType.LADDER,
                                              BlockType.GOLD, BlockType.ME_on_Ladder, BlockType.AI_on_Ladder,
                                              BlockType.ENEMY_on_Ladder] and self.can_stand_on(get_down_point(point)))\
-                or self.is_pipe(point)
+                or self.get_type(point) in [BlockType.LADDER, BlockType.PIPE]  
 
     def is_pipe(self, point):
         return self.get_type(point) in [BlockType.PIPE, BlockType.ME_on_Pipe,
@@ -189,11 +211,13 @@ class Map():
     def can_drill_and_move(self, point):
         return point[1]+2 < self.size and self.get_type(get_down_point(point)) == BlockType.BREAKABLE\
             and not self.get_type(point) in [BlockType.LADDER, BlockType.ENEMY_on_Ladder, BlockType.AI_on_Ladder] \
-            and self.can_move_to_point(get_down_point((point[0], point[1]+1))) and self.me_point != point
+            and self.can_move_to_point(get_down_point((point[0], point[1]+1)))\
+            and (self.can_move_to_point(get_left_point(point)) or self.can_move_to_point(get_right_point(point))) 
 
     def can_move_to_point(self, end_point):
         if end_point[0] < self.size and end_point[1] < self.size:
             end_type = self.get_type(end_point)
+
             if end_type in [BlockType.TRAP, BlockType.AI, BlockType.ENEMY, BlockType.NON_BREAKABLE, BlockType.BREAKABLE]:
                 return False
             if end_type in [BlockType.EMPTY, BlockType.LADDER, BlockType.PIPE, BlockType.GOLD, BlockType.ME,
@@ -465,7 +489,8 @@ class Solver():
 
             if self.is_gold_under_me():
                 return self.get_action_when_gold_is_under_me()
-
+            if self.should_drill_down():
+                a = 1
             if self.should_drill():
                 direction = get_direction(self.me_point, self.route[0])
                 self.queue.append(direction)
@@ -528,9 +553,20 @@ class Solver():
         point = self.me_point[0] + get_multiplier(direction), self.me_point[1]
         return self.game_map.can_move_to_point(point)
 
+    def should_drill_down(self):
+        if len(self.route) > 1:
+            if self.game_map.get_type(self.route[0]) == BlockType.BREAKABLE:
+                if self.game_map.can_move_to_point(get_left_point(self.me_point)) and self.game_map.can_stand_on(get_left_point(self.route[0])):
+                    self.route.insert(0, get_left_point(self.me_point))
+                elif self.game_map.can_move_to_point(get_right_point(self.me_point)) and self.game_map.can_stand_on(get_right_point(self.route[0])):
+                    self.route.insert(0, get_right_point(self.me_point))
+                else:
+                    print "WARNING - bad drilling"
+
     def should_drill(self):
         if len(self.route) > 1:
             breakable_next_to_next = self.game_map.get_type(self.route[1]) == BlockType.BREAKABLE
+            
             x_point_of_block_is_next_to_me = abs(self.me_point[0] - self.route[1][0]) == 1
             ai_cant_get_me = BlockType.AI not in self.game_map.get_neighbor_nodes_types(self.me_point)
             return breakable_next_to_next and x_point_of_block_is_next_to_me and ai_cant_get_me
@@ -679,16 +715,21 @@ class Render():
 
         bgrd_color = None
 
-        if node.type == BlockType.NON_BREAKABLE:
-            bgrd_color = (64, 64, 64)
-        elif node.type == BlockType.BREAKABLE:
-            bgrd_color = (255, 204, 153)
-        elif node.type == BlockType.ME:
-            bgrd_color = (0, 255, 0)
-        elif node.type == BlockType.AI:
-            bgrd_color = (255, 0, 0)
-        elif node.type == BlockType.GOLD:
-            bgrd_color = (255, 255, 0)
+        if node.person:
+            if node.person == Person.ME:
+                bgrd_color = (0, 255, 0)
+            elif node.person == Person.AI:
+                bgrd_color = (255, 0, 0)
+            elif node.person == Person.ENEMY:
+                bgrd_color = (255, 150, 0)
+        else:
+
+            if node.type == BlockType.NON_BREAKABLE:
+                bgrd_color = (64, 64, 64)
+            elif node.type == BlockType.BREAKABLE:
+                bgrd_color = (255, 204, 153)
+            elif node.type == BlockType.GOLD:
+                bgrd_color = (255, 255, 0)
 
         if bgrd_color:
             pygame.draw.rect(
