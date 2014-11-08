@@ -148,6 +148,18 @@ class Map():
             node.draw_cell = Cell()
             self.matrix[x][y] = node
 
+    def update_graph_info(self):
+        for i in range(self.size):
+            for j in range(self.size):
+                #disable graph joints near close enemy
+                if self.matrix[i][j].person == Person.ENEMY or self.matrix[i][j].person == Person.AI:
+                    if abs(i - self.me_point[0]) + abs(j - self.me_point[1]) < 10:
+                        neighbors = self.get_neighbor_points((i,j))
+
+                        for n in neighbors:
+                            node = self.matrix[n[0]][n[1]]
+                            node.joints = [item for item in node.joints if item.point != (i,j)]
+                        
     def create_graph_info(self):
         for i in range(self.size):
             for j in range(self.size):
@@ -303,7 +315,7 @@ class Map():
             elem_age = m[elem[0]][elem[1]]
             if elem[0] == end[0] and elem[1] == end[1]:
                 #we found it
-                return True  
+                return True
                 
             joints = self.matrix[elem[0]][elem[1]].joints
 
@@ -323,34 +335,53 @@ class Map():
         m[start[0]][start[1]] = 0
         queue.append(start)
         scan_dict = dict()
-        scan_dict['gold'] = []
-        scan_dict['ai'] = []
-        scan_dict['enemy'] = []
+        scan_dict['gold'] = [] # (point, dist, priority)
 
-        while queue and len(scan_dict['gold']) < 3:
 
+        while queue:
             elem = queue.pop(0)
-
             elem_age = m[elem[0]][elem[1]]
             if self.matrix[elem[0]][elem[1]].type == BlockType.GOLD:
-                scan_dict['gold'].append(elem)
+                t = [elem, elem_age, 0]
+                scan_dict['gold'].append(t)
 
             joints = self.matrix[elem[0]][elem[1]].joints
 
             for joint in joints:
                 j_point = joint.point
-                for point in self.get_neighbor_points(j_point):
-                    if self.get_type(point) in [BlockType.AI, BlockType.AI_on_Ladder, BlockType.AI_on_Pipe]\
-                            and not point in scan_dict['ai']:
-                        scan_dict['ai'].append(point)
-                    if self.get_type(point) in [BlockType.ENEMY, BlockType.ENEMY_on_Ladder]\
-                            and not point in scan_dict['enemy']:
-                        scan_dict['enemy'].append(point)
                 if m[j_point[0]][j_point[1]] is not None:
                     continue
 
                 m[j_point[0]][j_point[1]] = elem_age + 1
                 queue.append(j_point)
+        
+        for g in scan_dict['gold']:
+            for i in range(self.size):
+                for j in range(self.size):
+                    m[i][j] = None
+            start_point = g[0]
+            queue = []
+            m[start_point[0]][start_point[1]] = 0
+            queue.append(start_point)
+
+            while queue:
+                elem = queue.pop(0)
+                elem_age = m[elem[0]][elem[1]]
+                if elem_age > 10:
+                    break
+
+                if self.matrix[elem[0]][elem[1]].type == BlockType.GOLD:
+                    g[2] += 1
+                
+                joints = self.matrix[elem[0]][elem[1]].joints
+
+                for joint in joints:
+                    j_point = joint.point
+                    if m[j_point[0]][j_point[1]] is not None:
+                        continue
+
+                    m[j_point[0]][j_point[1]] = elem_age + 1
+                    queue.append(j_point)
 
         return scan_dict
 
@@ -477,8 +508,8 @@ class Solver():
             #self.goldPos = self.get_random_gold()
             return ''
 
-        self.route = self.game_map.get_route(self.me_point, self.gold_candidates[0])
-        print "path= %s" % self.route
+        self.route = self.game_map.get_route(self.me_point, self.gold_candidates[0][0])
+        #print "path= %s" % self.route
 
         if self.route:
             next_point = self.route[0]
@@ -515,9 +546,15 @@ class Solver():
         self.curr_node = self.game_map.matrix[self.me_point[0]][self.me_point[1]]
         self.surround_points = self.get_surround_points()
 
-        self.gold_candidates = self.game_map.get_scan_dict(self.me_point)['gold']
-        self.ai_points = self.game_map.get_scan_dict(self.me_point)['ai']
-        self.enemy_points = self.game_map.get_scan_dict(self.me_point)['enemy']
+        scan_dict = self.game_map.get_scan_dict(self.me_point)
+
+        self.gold_candidates = scan_dict['gold']
+
+        #(point, dist, gold_near)
+        A = 1
+        C = 150
+        B = 12
+        self.gold_candidates.sort(key=lambda x: A * (C - x[1]) + B * x[2], reverse=True)
 
         self.is_in_danger = self.is_player_in_danger()
         print "Me %s: %s" % ([self.me_point], self.curr_node.type)
@@ -564,10 +601,12 @@ class Solver():
         if len(self.route) > 1:
             if self.game_map.get_type(self.route[0]) == BlockType.BREAKABLE:
                 print "Need to dig down"
-                if self.game_map.can_move_to_point(get_left_point(self.me_point)) and self.game_map.can_stand_on(get_left_point(self.route[0])):
+                if self.game_map.can_move_to_point(get_left_point(self.me_point)) \
+                and (self.game_map.can_stand_on(get_left_point(self.route[0])) or  BlockType.PIPE == self.game_map.get_type(get_left_point(self.route[0]))):
                     #self.route.insert(0, get_left_point(self.me_point))
                     tmp_route = ['LEFT', 'ACT, RIGHT', 'RIGHT']
-                elif self.game_map.can_move_to_point(get_right_point(self.me_point)) and self.game_map.can_stand_on(get_right_point(self.route[0])):
+                elif self.game_map.can_move_to_point(get_right_point(self.me_point))\
+                and (self.game_map.can_stand_on(get_right_point(self.route[0])) or  BlockType.PIPE == self.game_map.get_type(get_right_point(self.route[0]))):
                     #self.route.insert(0, get_right_point(self.me_point))
                     tmp_route = ['RIGHT', 'ACT, LEFT', 'LEFT']
                 else:
@@ -582,26 +621,13 @@ class Solver():
             ai_cant_get_me = BlockType.AI not in self.game_map.get_neighbor_nodes_types(self.me_point)
             return breakable_next_to_next and x_point_of_block_is_next_to_me and ai_cant_get_me
 
-    def get_random_gold(self):
-        print "WARNING - no gold found"
-        random_x_point = random.randint(1, self.game_map.size - 1)
-        random_y_point = random.randint(1, self.game_map.size - 1)
-        print "x: %s, y: %s" % (random_x_point, random_y_point)
-        gold_pos_list = self.game_map.get_scan_dict((random_x_point, random_y_point))['gold']
-        while not gold_pos_list:
-            random_x_point = random.randint(1, self.game_map.size - 1)
-            random_y_point = random.randint(1, self.game_map.size - 1)
-            print "x: %s, y: %s" % (random_x_point, random_y_point)
-            gold_pos_list = self.game_map.get_scan_dict((random_x_point, random_y_point))['gold']
-        print "Random gold points: %s" % gold_pos_list
-        return gold_pos_list[0]
 
     def is_gold_under_me(self):
-        if self.me_point[0] == self.gold_candidates[0][0]:
+        if self.me_point[0] == self.gold_candidates[0][0][0]:
             if self.game_map.get_type((self.me_point[0], self.me_point[1]+2)) == BlockType.BREAKABLE\
                     and self.curr_node.type != BlockType.LADDER:
                 start_point = (self.me_point[0], self.me_point[1] + 2)
-                route = self.game_map.get_route(start_point, self.gold_candidates[0])
+                route = self.game_map.get_route(start_point, self.gold_candidates[0][0])
                 route_node_types = [self.game_map.get_type(point) for point in route][:-1]
                 if route_node_types:
                     if route_node_types.count(route_node_types[0]) == len(route_node_types):
@@ -694,7 +720,8 @@ class Render():
                 msg = ws_client.AccessVarMSG(True, None)
                 game_map.parse_msg(msg)
                 game_map.create_graph_info()
-                game_map.dump_graph('dump_Grapth.txt') # Debug
+                game_map.update_graph_info()
+                #game_map.dump_graph('dump_Grapth.txt') # Debug
                 turn = self.solver.solve(game_map)
                 self.solver.remember_previous_point()
                 print "turn: %s" % turn
