@@ -459,6 +459,7 @@ class Solver():
         self.previous_point = None
         self.ai_points = None
         self.enemy_points = None
+        self.drill_route = None
 
     def solve(self, game_map):
         self.turn_related_assignments(game_map)
@@ -487,10 +488,15 @@ class Solver():
                 if self.previous_point:
                     return get_direction(self.me_point, self.previous_point)
 
+            res = self.should_drill_down()
+
+            if res:
+                self.queue = res
+                return self.queue.pop(0)
+            
             if self.is_gold_under_me():
                 return self.get_action_when_gold_is_under_me()
-            if self.should_drill_down():
-                a = 1
+            
             if self.should_drill():
                 direction = get_direction(self.me_point, self.route[0])
                 self.queue.append(direction)
@@ -554,14 +560,19 @@ class Solver():
         return self.game_map.can_move_to_point(point)
 
     def should_drill_down(self):
+        tmp_route = None
         if len(self.route) > 1:
             if self.game_map.get_type(self.route[0]) == BlockType.BREAKABLE:
+                print "Need to dig down"
                 if self.game_map.can_move_to_point(get_left_point(self.me_point)) and self.game_map.can_stand_on(get_left_point(self.route[0])):
-                    self.route.insert(0, get_left_point(self.me_point))
+                    #self.route.insert(0, get_left_point(self.me_point))
+                    tmp_route = ['LEFT', 'ACT, RIGHT', 'RIGHT']
                 elif self.game_map.can_move_to_point(get_right_point(self.me_point)) and self.game_map.can_stand_on(get_right_point(self.route[0])):
-                    self.route.insert(0, get_right_point(self.me_point))
+                    #self.route.insert(0, get_right_point(self.me_point))
+                    tmp_route = ['RIGHT', 'ACT, LEFT', 'LEFT']
                 else:
                     print "WARNING - bad drilling"
+        return tmp_route
 
     def should_drill(self):
         if len(self.route) > 1:
