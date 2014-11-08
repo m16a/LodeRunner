@@ -509,7 +509,6 @@ class Solver():
             return ''
 
         self.route = self.game_map.get_route(self.me_point, self.gold_candidates[0][0])
-        #print "path= %s" % self.route
 
         if self.route:
             next_point = self.route[0]
@@ -563,9 +562,10 @@ class Solver():
         print "ENEMY points: %s" % self.enemy_points
 
     def is_player_in_danger(self):
-        if BlockType.AI in [self.game_map.get_type(p) for p in self.surround_points]:
+        if Person.AI in [self.game_map.get_node(p).person for p in self.surround_points]:
             return True
-        return False
+        elif Person.ENEMY in [self.game_map.get_node(p).person for p in self.surround_points]:
+            return False
 
     def get_action_when_in_danger(self):
         print "Player is in danger !!!"
@@ -589,7 +589,7 @@ class Solver():
 
     def get_nearest_ai_point(self):
         for point in self.surround_points:
-            if self.game_map.get_type(point) in [BlockType.AI, BlockType.AI_on_Ladder, BlockType.AI_on_Pipe]:
+            if self.game_map.get_node(point).person in [Person.AI, Person.ENEMY]:
                 return point
 
     def can_move_in_direction(self, direction):
